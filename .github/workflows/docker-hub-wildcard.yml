@@ -1,0 +1,77 @@
+name: 🚀 Universal Multi-Image Auto Pusher
+
+on:
+  push:
+    branches: [ "main" ]
+    # 忽略直接修改 workflow 本身，防止死循环
+    paths-ignore:
+      - '.github/workflows/**'
+      - 'README.md'
+
+jobs:
+  dynamic-build:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. 拉取代码（必须设置 fetch-depth: 2，否则 git diff 找不到上一次的提交记录）
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 2
+
+    # 2. 登录到 Docker Hub
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    # 3. 设置 Buildx 编译器
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    # 4. 核心：动态检测变动并执行打包
+    - name: Detect Changes and Push
+      run: |
+        echo "🔍 开始检查本次提交变动的文件夹..."
+        
+        # 获取发生变化的文件列表，提取出第一级目录名并去重
+        CHANGED_DIRS=$(git diff --name-only HEAD~1 HEAD | grep '/' | cut -d'/' -f1 | sort -u)
+        
+        if [ -z "$CHANGED_DIRS" ]; then
+          echo "✨ 没有发现任何文件夹发生变动，跳过构建。"
+          exit 0
+        fi
+
+        # 遍历所有发生变动的文件夹
+        for dir in $CHANGED_DIRS; do
+          # 排除隐藏文件夹和工作流文件夹
+          if [[ "$dir" == .* ]] || [ "$dir" = ".github" ]; then
+            continue
+          fi
+
+          # 检查该变动文件夹下是否存在 Dockerfile
+          if [ -f "$dir/Dockerfile" ]; then
+            echo "--------------------------------------------------"
+            echo "🎯 发现目标项目文件夹: [$dir]"
+            
+            # 动态拼接 Docker Hub 镜像名称（用户名/文件夹名）
+            IMAGE_NAME="${{ secrets.DOCKERHUB_USERNAME }}/$dir"
+            TAG_LATEST="$IMAGE_NAME:latest"
+            TAG_SHA="$IMAGE_NAME:${{ github.sha }}"
+
+            echo "📦 正在编译并推送镜像到: $TAG_LATEST"
+            
+            # 执行动态构建
+            docker buildx build \
+              --context ./"$dir" \
+              --file ./"$dir"/Dockerfile \
+              --push \
+              --tag "$TAG_LATEST" \
+              --tag "$TAG_SHA"
+              
+            echo "✅ 项目 [$dir] 镜像推送成功！"
+          else
+            echo "⏩ 文件夹 [$dir] 发生变动，但未检测到 Dockerfile，已跳过。"
+          fi
+        done
