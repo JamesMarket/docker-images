@@ -64,11 +64,11 @@ jobs:
             
             # 执行动态构建
             docker buildx build \
-              --context ./"$dir" \
               --file ./"$dir"/Dockerfile \
               --push \
               --tag "$TAG_LATEST" \
-              --tag "$TAG_SHA"
+              --tag "$TAG_SHA" \
+              ./"$dir"
               
             echo "✅ 项目 [$dir] 镜像推送成功！"
           else
