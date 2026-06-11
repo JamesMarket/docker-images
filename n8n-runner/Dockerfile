@@ -4,6 +4,7 @@ ARG PYTHON_VERSION=3.13
 # ==============================================================================
 # STAGE 1: JavaScript runner (@n8n/task-runner) artifact from CI
 # ==============================================================================
+
 FROM node:${NODE_VERSION}-alpine3.22 AS javascript-runner-builder
 COPY ./dist/task-runner-javascript /app/task-runner-javascript
 
